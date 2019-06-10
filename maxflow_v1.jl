@@ -1,13 +1,8 @@
 using MatrixNetworks
 using SparseArrays
 
-# Adding a tolerance parameter to the max-flow code to be more careful with
-# rounding errors
-
 mutable struct stFlow
-    flowvalue::Float64 # gives you the max-flow value
-    cutvalue::Float64 # gives min-cut value, which should equal flowvalue,
-                      # but may differ by a small tolerance value.
+    value::Float64 # gives you the max-flow value
     source_nodes::Vector{Int64} # give the indices of the nodes attached to the source
     C::SparseMatrixCSC # gives the original capacity matrix
     F::SparseMatrixCSC # gives the values of the flows on each edge
@@ -21,12 +16,9 @@ maxflow
 Given a sparse matrix A representing a weighted and possibly directed graph,
 a source node s, and a sink node t, return the maximum s-t flow.
 
-flowtol = tolerance parameter for whether there is still capacity available on
-            an edge. Helps avoid rounding errors. Default is 1e-6.
-
 Returns F, which is of type stFlow.
 """
-function maxflow(B::Union{SparseMatrixCSC,MatrixNetwork},s::Int,t::Int, flowtol::Union{Float,Int}= 1e-6)
+function maxflow(B::Union{SparseMatrixCSC,MatrixNetwork},s::Int,t::Int)
 
     # The code actually assumes a SparseMatrixCSC input
     if typeof(B) <: SparseMatrixCSC
@@ -75,10 +67,10 @@ function maxflow(B::Union{SparseMatrixCSC,MatrixNetwork},s::Int,t::Int, flowtol:
         F[v,1] = -C[1,v]
     end
     excess = [0;sWeights;0]
-    source_nodes, FlowMat, value = Main_Push_Relabel(C,F,ExcessNodes,excess,flowtol)
+    source_nodes, FlowMat, value = Main_Push_Relabel(C,F,ExcessNodes,excess)
 
     smap = sortperm(Map)
-    F = stFlow(value, value, sort(Map[source_nodes]),C[smap,smap],FlowMat[smap,smap],s,t)
+    F = stFlow(value, sort(Map[source_nodes]),C[smap,smap],FlowMat[smap,smap],s,t)
     return F
 end
 
@@ -89,7 +81,7 @@ are given by vectors svec and tvec.
 
 This code sets s as the first node, and t as the last node.
 """
-function maxflow(A::Union{SparseMatrixCSC,MatrixNetwork},svec::Vector{Float64},tvec::Vector{Float64}, flowtol::Union{Float,Int}= 1e-6)
+function maxflow(A::Union{SparseMatrixCSC,MatrixNetwork},svec::Vector{Float64},tvec::Vector{Float64})
 
     if typeof(A) <: SparseMatrixCSC
     else
@@ -115,27 +107,27 @@ function maxflow(A::Union{SparseMatrixCSC,MatrixNetwork},svec::Vector{Float64},t
         F[v,1] = -C[1,v]
     end
     excess = [0;sWeights;0]
-    source_nodes, FlowMat, value = Main_Push_Relabel(C,F,ExcessNodes,excess,flowtol)
+    source_nodes, FlowMat, value = Main_Push_Relabel(C,F,ExcessNodes,excess)
 
-    F = stFlow(value,value,source_nodes,FlowMat,s,t)
+    F = stFlow(value,source_nodes,FlowMat,s,t)
 end
 
-maxflow(A::Union{SparseMatrixCSC,MatrixNetwork},svec::Vector{Int64},tvec::Vector{Int64},flowtol::Union{Float,Int}= 1e-6) =
-    maxflow(A,float(svec),float(tvec),flowtol)
+maxflow(A::Union{SparseMatrixCSC,MatrixNetwork},svec::Vector{Int64},tvec::Vector{Int64}) =
+    maxflow(A,float(svec),float(tvec))
 
 
 flow(F::stFlow) =
-    F.flowvalue
+    F.value
 
 """
 Given a flow, stored in an stFlow object, return the set of nodes attached to
 the source
 """
-function source_nodes(F::stFlow,flowtol::Union{Float,Int}= 1e-6)
+function source_nodes(F::stFlow)
     # Run a bfs from the sink node. Anything with distance
     # n is disconnected from the sink. Thus it's part of the minimium cut set
     n = size(F.C,2)
-    finalHeight = relabeling_bfs(F.C,F.F,F.t,flowtol)
+    finalHeight = relabeling_bfs(F.C,F.F,F.t)
     S = Vector{Int64}()
     for i = 1:n
         if finalHeight[i] == n
@@ -143,7 +135,7 @@ function source_nodes(F::stFlow,flowtol::Union{Float,Int}= 1e-6)
         end
     end
 
-    # Sanity checks: source node is on source side, sink node is on sink side
+    # Sanity checks
     @assert(~in(F.t,S))
     @assert(in(F.s,S))
 
@@ -154,10 +146,10 @@ end
 Given a flow, stored in an stFlow object, return the set of nodes attached to
 the sink
 """
-function sink_nodes(F::stFlow,flowtol::Union{Float,Int}= 1e-6)
+function sink_nodes(F::stFlow)
     # Run a bfs from the sink node. Anything with distance < n is sink-attached.
     n = size(F.C,2)
-    finalHeight = relabeling_bfs(F.C,F.F,F.t,flowtol)
+    finalHeight = relabeling_bfs(F.C,F.F,F.t)
     T = Vector{Int64}()
     for i = 2:n
         if finalHeight[i] < n
@@ -175,10 +167,10 @@ end
 """
 Gives the cut as a list of edges.
 """
-function cut_edges(F::stFlow,flowtol::Union{Float,Int}= 1e-6)
+function cut_edges(F::stFlow)
     # Run a bfs from the sink node to get source and sink sets
     n = size(F.C,2)
-    finalHeight = relabeling_bfs(F.C,F.F,F.t,flowtol)
+    finalHeight = relabeling_bfs(F.C,F.F,F.t)
     T = Vector{Int64}()
     S = Vector{Int64}()
     for i = 1:n
@@ -208,7 +200,7 @@ end
 #   this is the vector of edge capacities from the implicit source to the graph.
 #   If F != 0, then it's the excess from a previous run of the algorithm
 function Main_Push_Relabel(C::SparseMatrixCSC,
-    F::SparseMatrixCSC,ExcessNodes::Array{Int64},excess::Array{Float64},flowtol::Union{Float,Int}= 1e-6)
+    F::SparseMatrixCSC,ExcessNodes::Array{Int64},excess::Array{Float64})
 
     # here, n includes only one terminal node, the sink
     n = size(C,1)
@@ -238,7 +230,7 @@ function Main_Push_Relabel(C::SparseMatrixCSC,
     # count the number of nodes that have been relabeled
     relabelings::Int64 = 0
 
-    height = relabeling_bfs(C,F,n,flowtol)  # compute initial distance from sink
+    height = relabeling_bfs(C,F,n)     # compute initial distance from sink
     # In the code and comments, height = distance from sink = label of node
 
     # Continue until the queue no longer contains any active nodes.
@@ -252,7 +244,7 @@ function Main_Push_Relabel(C::SparseMatrixCSC,
         relabelings += discharge!(C,F,Queue,u,Neighbs[u],height,excess,n,d[u],inQ)
 
         # if u is still active, put it back into the queue
-        if excess[u] > 0
+        if excess[u] > 0 #&& height[u] < n
             prepend!(Queue,u)
             inQ[u] = true
         end
@@ -261,7 +253,7 @@ function Main_Push_Relabel(C::SparseMatrixCSC,
         # This periodically recomputes distances between nodes and the sink
         if relabelings == n
             relabelings = 0
-            dist = relabeling_bfs(C,F,flowtol)
+            dist = relabeling_bfs(C,F)
             height = dist
         end
 
@@ -269,7 +261,7 @@ function Main_Push_Relabel(C::SparseMatrixCSC,
 
     # Compute final distances from sink using BFS. Anything with distance
     # n is disconnected from the sink. Thus it's part of the minimium cut set
-    finalHeight = relabeling_bfs(C,F,n,flowtol)
+    finalHeight = relabeling_bfs(C,F,n)
     S = Vector{Int64}()
     push!(S,1)          # Include the source node
     for i = 2:n
@@ -382,11 +374,12 @@ end
 # Given initial capacity matrix C and flow matrix F, compute the distance
 # from each node to the specified "start" node.
 # Start defaults to node n, which is assumed to be the sink node
-function relabeling_bfs(C::SparseMatrixCSC,F::SparseMatrixCSC,start::Int64=0,flowtol::Union{Float,Int}=1e-6)
+function relabeling_bfs(C::SparseMatrixCSC,F::SparseMatrixCSC,start::Int64=0)
     # To avoid subtraction cancellation errors that may have ocurred when pushing
     # flow, when computing a bfs we round edges to zero if they are under
     # a certain tolerance
     Cf = round.((C-F),digits = 6)
+    #Cf = C-F
     n = size(Cf,1)
 
     if start == 0

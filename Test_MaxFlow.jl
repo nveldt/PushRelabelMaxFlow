@@ -1,4 +1,6 @@
-include("maxflow.jl")
+# Test the push-relabel max flow code
+
+include("maxflow_tol.jl")
 
 using MAT
 
@@ -6,7 +8,7 @@ mat = matread("Netscience_xy.mat")
 A = mat["A"]
 xy = mat["xy"]
 s = 4
-t = 67
+t = 100
 
 F = maxflow(A,s,t)
 

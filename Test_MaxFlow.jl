@@ -10,11 +10,6 @@ t = 67
 
 F = maxflow(A,s,t)
 
-R = [s]
-R = neighborhood(A,R,2)
-
-S, cond = mqi(A,R)
-
 include("display_graph.jl")
 
 f = display_graph(A,xy,.8)

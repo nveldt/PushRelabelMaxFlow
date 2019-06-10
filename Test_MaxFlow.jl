@@ -1,39 +1,46 @@
 # Test the push-relabel max flow code
 
-include("maxflow_tol.jl")
+include("maxflow.jl")
 
 using MAT
 
 mat = matread("Netscience_xy.mat")
 A = mat["A"]
 xy = mat["xy"]
+n = size(A,1)
 s = 4
-t = 100
+R,vals = findnz(A[:,s])
+R,vals = findnz(A[:,R])
 
-F = maxflow(A,s,t)
+# Set up a weighted max-flow/min-cut problem via the standard auxiliary graph
+# construction for SimpleLocal/FlowSeed/FlowImprove.
+alpha = .7
+rvec = zeros(n)
+rvec[R] .= 1
+svec = alpha*rvec
+epsilon = .01
+tvec = alpha*epsilon*(ones(n)-rvec)
+
+C = [spzeros(1,1) sparse(svec') spzeros(1,1);
+    spzeros(n,1) A sparse(tvec);
+    spzeros(1,1) spzeros(1,n) spzeros(1,1)]
+
+flowtolerance = 1e-10
+F = maxflow(C,1, n+2, flowtolerance)
+E = cut_edges(F)
+S = source_nodes(F).-1
+S = setdiff(S,0)
 
 include("display_graph.jl")
-
 f = display_graph(A,xy,.8)
 
-# Highlight the source and sink node.
-S = F.source_nodes
-scatter!(f,[xy[F.s,1]],[xy[F.s,2]], color = :yellow,markersize = 10,markershape = :o)
-scatter!(f,[xy[F.t,1]],[xy[F.t,2]], color = :yellow,markersize = 10,markershape = :diamond)
+# Color source set
+scatter!(f,[xy[R,1]],[xy[R,2]], color = :red,markersize = 5)
+scatter!(f,[xy[S,1]],[xy[S,2]], color = :blue,markersize = 3)
 
-# Color source set and sink set
-T = sink_nodes(F)
-scatter!(f,[xy[S,1]],[xy[S,2]], color = :blue,markersize = 5)
-scatter!(f,[xy[T,1]],[xy[T,2]], color = :red,markersize = 5)
+sorig = source_nodes(F,flowtolerance)
+torig = sink_nodes(F,flowtolerance)
 
-## Highlight the cut edges in magenta
-edgeset = cut_edges(F)
-ei = edgeset[:,1]
-ej = edgeset[:,2]
-lx = [xy[ei,1]';xy[ej,1]';NaN*ones(1,length(ei))]
-ly = [xy[ei,2]';xy[ej,2]';NaN*ones(1,length(ei))]
-for i = 1:size(edgeset,1)-1
-    plot!(lx[:,i],ly[:,i],color = :magenta, linewidth = 1)
-end
-i = size(edgeset,1)
-plot!(lx[:,i],ly[:,i],color = :magenta, linewidth = 1)
+# Check cut value and flow value, which should be equal
+@show sum(C[sorig,torig])
+@show F.flowvalue

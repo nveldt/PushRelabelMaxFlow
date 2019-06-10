@@ -9,7 +9,6 @@ A = mat["A"]
 xy = mat["xy"]
 s = 4
 
-
 R = [s]
 R = neighborhood(A,R,2)
 

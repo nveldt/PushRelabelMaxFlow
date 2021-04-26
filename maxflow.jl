@@ -4,7 +4,6 @@ using SparseArrays
 # Adding a tolerance parameter to the max-flow code to be more careful with
 # rounding errors
 
-
 mutable struct stFlow
     flowvalue::Float64 # gives you the max-flow value
     cutvalue::Float64 # gives min-cut value, which should equal flowvalue,
